@@ -1,4 +1,4 @@
-# mini-ptc
+# @oh-my-dsh/mini-ptc
 
 DeepSeek Harness 0.2.1-rc.2 的极简程序化工具调用（PTC）Agent 预设。
 
@@ -23,7 +23,7 @@ DeepSeek Harness 0.2.1-rc.2 的极简程序化工具调用（PTC）Agent 预设�
 ```sh
 pnpm run build
 pnpm pack --dry-run --json
-dsh plugin --profile web add /absolute/path/to/mini-ptc-0.1.0.tgz
+dsh plugin --profile web add /absolute/path/to/oh-my-dsh-mini-ptc-0.1.0.tgz
 ```
 
 在 Web GUI 的 **Agent 预设（Agent presets）** 中选择 **Mini PTC**，或将其设为默认。发行版默认仍是 `standard`。

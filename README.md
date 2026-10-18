@@ -1,4 +1,4 @@
-# mini-ptc
+# @oh-my-dsh/mini-ptc
 
 A minimal programmatic-tool-calling agent preset for DeepSeek Harness 0.2.1-rc.2.
 
@@ -23,7 +23,7 @@ Instead of sending a generated TypeScript SDK that repeats every tool signature,
 ```sh
 pnpm run build
 pnpm pack --dry-run --json
-dsh plugin --profile web add /absolute/path/to/mini-ptc-0.1.0.tgz
+dsh plugin --profile web add /absolute/path/to/oh-my-dsh-mini-ptc-0.1.0.tgz
 ```
 
 Then open **Agent presets** in the Web GUI and choose **Mini PTC** for the session, or set it as the default. The shipped default remains `standard`.

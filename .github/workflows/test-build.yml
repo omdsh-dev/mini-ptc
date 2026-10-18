@@ -81,7 +81,7 @@ jobs:
           import { existsSync, readFileSync, writeFileSync } from "node:fs"
           const version = process.env.TEST_VERSION
           const order = [
-            ["mini-ptc", "mini-ptc"],
+            ["@oh-my-dsh/mini-ptc", "oh-my-dsh-mini-ptc"],
           ]
           const packages = []
           for (const [name, base] of order) {

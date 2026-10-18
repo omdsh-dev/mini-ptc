@@ -1,5 +1,5 @@
 {
-  "name": "mini-ptc",
+  "name": "@oh-my-dsh/mini-ptc",
   "description": "Minimal programmatic tool-calling agent preset for DeepSeek Harness with runtime help() discovery.",
   "keywords": [
     "deepseek-harness",

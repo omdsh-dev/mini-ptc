@@ -73,7 +73,7 @@
                   headChars: 4096
                   tailChars: 1024
           - id: mini-ptc
-            name: 'mini-ptc'
+            name: '@oh-my-dsh/mini-ptc'
             config:
               toolName: run
               timeoutMs: 120000
