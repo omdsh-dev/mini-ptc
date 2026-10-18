@@ -1,98 +1,56 @@
+/* oxlint-disable vitest/prefer-to-be-falsy -- Strict boolean matchers are required by prefer-strict-boolean-matchers. */
+
 import { Context } from '@deepseek-ai/cordis'
 import { Loader } from '@deepseek-ai/cordis-plugin-loader'
 import { describe, expect, it } from 'vitest'
 
-import { createPluginHarness } from './harness.ts'
+import { resolveConfig } from '#src/config'
 
-const TEST_TIMEOUT = 5000
-const EXPECTED_SINGLE_CALL = 1
+describe('mini-ptc package', () => {
+  it('preserves the function-plugin namespace through Loader unwrapping', async () => {
+    expect.hasAssertions()
+    const plugin = await import('#src/index')
+    expect('default' in plugin).toBe(false)
+    expect(plugin.name).toBe('mini-ptc')
+    expect(plugin.inject).toStrictEqual(['tools', 'systemPrompt', 'ptcRuntime'])
 
-interface PluginExports {
-  readonly name: unknown
-  readonly inject: unknown
-  readonly Config: unknown
-  readonly apply: unknown
-}
+    const loader = new Loader(new Context())
+    expect(loader.unwrapExports(plugin)).toBe(plugin)
+  })
 
-function isPluginExports(value: unknown): value is PluginExports {
-  return (
-    typeof value === 'object'
-    && value !== null
-    && 'name' in value
-    && 'inject' in value
-    && 'Config' in value
-    && 'apply' in value
-  )
-}
+  it('exports a Loader-facing schema and activation', async () => {
+    expect.hasAssertions()
+    const plugin = await import('#src/index')
+    expect(plugin.Config).toBeDefined()
+    expect(plugin.apply).toBeTypeOf('function')
+  })
 
-function createLoader(): Loader {
-  return new Loader(new Context())
-}
+  it('resolves configuration defaults', () => {
+    expect.hasAssertions()
+    expect(resolveConfig()).toStrictEqual({
+      toolName: 'run',
+      timeoutMs: 120_000,
+      maxTimeoutMs: 600_000,
+    })
+  })
 
-function assertPluginExports(unwrapped: unknown, plugin: object): void {
-  if (!isPluginExports(unwrapped)) {
-    throw new TypeError('Loader did not return plugin exports')
-  }
-  expect(unwrapped).toBe(plugin)
-  expect(unwrapped.name).toBe('plugin-template')
-  expect(unwrapped.inject).toStrictEqual([])
-  expect(unwrapped.Config).toBeDefined()
-  expect(unwrapped.apply).toBeTypeOf('function')
-}
+  it('rejects reserved or malformed transport names', () => {
+    expect.hasAssertions()
+    expect(() => resolveConfig({ toolName: 'run_code' })).toThrow(/reserved/u)
+    expect(() => resolveConfig({ toolName: 'help' })).toThrow(/reserved/u)
+    expect(() => resolveConfig({ toolName: 'bad name' })).toThrow(
+      /valid tool identifier/u,
+    )
+    expect(() => resolveConfig({ toolName: '' })).toThrow(
+      /valid tool identifier/u,
+    )
+  })
 
-async function testPreservesPluginNamespace(): Promise<void> {
-  expect.hasAssertions()
-  const plugin = await import('#src/index')
-  expect(['default' in plugin]).toStrictEqual([false])
-
-  const loader = createLoader()
-  const unwrapped: unknown = loader.unwrapExports(plugin)
-  assertPluginExports(unwrapped, plugin)
-}
-
-async function testAppliesWithSchemaDefaults(): Promise<void> {
-  expect.hasAssertions()
-  const harness = await createPluginHarness()
-  expect(harness.info).toHaveBeenCalledWith('DSH plugin template loaded')
-  await harness.dispose()
-}
-
-async function testAcceptsCompositionConfiguration(): Promise<void> {
-  expect.hasAssertions()
-  const harness = await createPluginHarness({ message: 'hello from a profile' })
-  expect(harness.info).toHaveBeenCalledWith('hello from a profile')
-  await harness.dispose()
-}
-
-async function testLogsOncePerActivation(): Promise<void> {
-  expect.hasAssertions()
-  const harness = await createPluginHarness({ message: 'once' })
-  expect(harness.info).toHaveBeenCalledTimes(EXPECTED_SINGLE_CALL)
-  await harness.dispose()
-}
-
-describe('@your-scope/dsh-plugin-template', () => {
-  it(
-    'preserves the function-plugin namespace through Loader unwrapping',
-    { timeout: TEST_TIMEOUT },
-    testPreservesPluginNamespace,
-  )
-
-  it(
-    'applies with schema defaults',
-    { timeout: TEST_TIMEOUT },
-    testAppliesWithSchemaDefaults,
-  )
-
-  it(
-    'accepts composition configuration',
-    { timeout: TEST_TIMEOUT },
-    testAcceptsCompositionConfiguration,
-  )
-
-  it(
-    'logs once for one activation',
-    { timeout: TEST_TIMEOUT },
-    testLogsOncePerActivation,
-  )
+  it('rejects unusable budgets', () => {
+    expect.hasAssertions()
+    expect(() => resolveConfig({ timeoutMs: 0 })).toThrow(/positive integer/u)
+    expect(() =>
+      resolveConfig({ timeoutMs: 2000, maxTimeoutMs: 1000 }),
+    ).toThrow(/greater than or equal/u)
+  })
 })

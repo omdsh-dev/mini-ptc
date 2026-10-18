@@ -1,17 +1,16 @@
 /**
- * Standalone function plugin for DeepSeek Harness.
+ * Standalone function plugin for the mini PTC agent preset.
  *
- * @module @your-scope/dsh-plugin-template
+ * @module mini-ptc
  */
 
 /** Cordis plugin name; keep this stable after publishing. */
-const name = 'plugin-template'
+const name = 'mini-ptc'
 
-/** Services that must exist before the plugin is applied. */
-const inject: string[] = []
+/** Host services that must exist before the preset can mount. */
+const inject = ['tools', 'systemPrompt', 'ptcRuntime']
 
 export { Config } from './config.ts'
 export type { PluginConfig, ResolvedConfig } from './config.ts'
 export { apply } from './runtime.ts'
-export type { PluginRuntime } from './runtime.ts'
 export { inject, name }

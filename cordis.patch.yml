@@ -1,10 +1,80 @@
-# Bundle patch applied over the selected DSH profile when this package is listed
-# in `dsh.profile.bundles`. The row id is deployment-local; the package name
-# must match package.json. Display metadata and the icon come from the exported
-# `locale/*.json` files and `./icon` resource, not from this patch.
-
+# mini-ptc bundle patch: one agent preset that presents every visible tool
+# through the run transport and runtime help() discovery. The preset owns its
+# tool rows, so selecting it in the Web Agent Presets page is the only step
+# needed after installing this bundle.
+#
+# Rows reference the host packages shipped by the Web bundle; this preset is
+# intended for profiles that already provide the standard agent plane.
 - insert:
-    - id: plugin-template
-      name: '@your-scope/dsh-plugin-template'
+    - id: preset-mini-ptc
+      name: '@deepseek-ai/dsh-agent-preset'
       config:
-        message: DSH plugin template loaded
+        id: mini-ptc
+        name: Mini PTC
+        description: Programmatic tool calling with runtime help() discovery and no generated SDK.
+        order: 3
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: You are a coding agent powered by the {{model}} model.
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - id: tool-jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: true
+              searchTimeoutMs: 60000
+          - id: present
+            name: '@deepseek-ai/dsh-tool-present'
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+          - id: mini-ptc
+            name: 'mini-ptc'
+            config:
+              toolName: run
+              timeoutMs: 120000
+              maxTimeoutMs: 600000

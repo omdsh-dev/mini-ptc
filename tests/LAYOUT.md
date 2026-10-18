@@ -1,24 +1,19 @@
 # Test Layout
 
-`tests/plugin.test.ts` owns the baseline Loader shape, configuration behavior,
-activation, and disposal evidence. `tests/harness.ts` provides the shared
-real-Cordis mount with an observable fake host boundary.
+- `tests/help.test.ts` owns the pure catalog formatting and fuzzy matching
+  rules.
+- `tests/plugin.test.ts` owns the Loader export shape and configuration
+  validation.
+- `tests/integration.test.ts` mounts the production plugin with the real
+  `dsh-system-prompt` and `dsh-tools` services on scoped Cordis contexts. It
+  proves prompt narrowing, `help()` behavior, nested dispatch, the direct-call
+  guard, custom transport names, and disposal.
+- `tests/harness.ts` provides the shared real-Cordis mount;
+  `tests/fake-runtime.ts` is the in-process `PtcRuntime` used only by tests.
 
-Extend test support only when the plugin requires it:
+No snapshot fixtures are used: the catalog and full-detail text are asserted
+directly, and the integration suite uses deterministic fixture tools.
 
-- extend `tests/harness.ts` when several suites need the same deterministic
-  production composition;
-- add `tests/<feature>.test.ts` for focused feature behavior;
-- add fixtures under `tests/snapshots/` for stable user-, model-, CLI-,
-  terminal-, editor-, or browser-visible expected output.
-
-A harness should mount production services and expose observable state rather
-than duplicate the implementation. The baseline has no snapshot fixtures and
-therefore defines no refresh command. When snapshots are introduced, add and
-document a repository-local refresh command here, with deterministic inputs,
-exact fixture ownership, and semantic review. Type-aware static checking is
-provided by the repository's Oxlint command.
-
-A product-visible plugin also needs a real Loader/profile composition test in
-its consuming DSH application; hand-mounted `ctx.plugin(...)` suites are unit
-coverage, not composition evidence.
+A deployed profile still needs the real `dsh-ptc-runtime-node` provider and the
+agent preset selected in the Web GUI; that composition is the consuming host's
+responsibility and is not reproduced by the unit harness.
