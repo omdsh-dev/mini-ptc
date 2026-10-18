@@ -29,6 +29,7 @@ import {
   renderPrelude,
 } from './bindings.ts'
 import type { ResolvedConfig } from './config.ts'
+import type { PromptStateStore } from './prompt-state.ts'
 
 const JSON_INDENT = 2
 const EMPTY_OUTPUT = '(run completed with no output)'
@@ -153,6 +154,7 @@ interface ExecuteOptions {
   runtime: PtcRuntime
   args: { code: string; timeoutMs?: number }
   exec: ToolRunContext
+  promptState: PromptStateStore
 }
 
 /** Resolved session directory and file policy for one program. */
@@ -201,7 +203,7 @@ async function resolveExecutionContext(
 }
 
 async function executeProgram(options: ExecuteOptions): Promise<string> {
-  const { ctx, config, runtime, args, exec } = options
+  const { ctx, config, runtime, args, exec, promptState } = options
   const controller = new AbortController()
   const onAbort = (): void => {
     controller.abort(exec.signal.reason)
@@ -218,6 +220,7 @@ async function executeProgram(options: ExecuteOptions): Promise<string> {
     config,
     exec,
     controller,
+    promptState,
   })
   try {
     const program = renderPrelude(helpBindingName) + args.code
@@ -244,19 +247,22 @@ async function executeProgram(options: ExecuteOptions): Promise<string> {
   }
 }
 
+/** Inputs for one transport tool definition. */
+interface RunToolOptions {
+  ctx: Context
+  config: ResolvedConfig
+  runtime: PtcRuntime
+  promptState: PromptStateStore
+}
+
 /**
  * Build the transport tool definition.
  *
- * @param ctx - The plugin's scoped context.
- * @param config - Resolved plugin configuration.
- * @param runtime - Mounted PTC runtime provider.
+ * @param options - Scoped context, config, runtime, and prompt state.
  * @returns A registry-ready tool definition.
  */
-function createRunTool(
-  ctx: Context,
-  config: ResolvedConfig,
-  runtime: PtcRuntime,
-): ToolDefinition {
+function createRunTool(options: RunToolOptions): ToolDefinition {
+  const { ctx, config, runtime, promptState } = options
   const instructions = runtime.executionInstructions
   const description = [
     'Execute a TypeScript program against the available tools. Call await help() inside the program to list tools and await help("name") for one tool\'s full schema.',
@@ -299,7 +305,14 @@ function createRunTool(
       rawInput: args.code,
     }),
     async execute(args, exec) {
-      const output = await executeProgram({ ctx, config, runtime, args, exec })
+      const output = await executeProgram({
+        ctx,
+        config,
+        runtime,
+        args,
+        exec,
+        promptState,
+      })
       return output
     },
   })

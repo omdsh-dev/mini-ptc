@@ -8,6 +8,7 @@ DeepSeek Harness 0.2.1-rc.2 的极简程序化工具调用（PTC）Agent 预设�
 
 - **只暴露一个工具。** 系统提示词里的工具目录被替换为 `run` 一个 schema。
 - **运行时发现。** 程序内可用 `help()`、`help("name")` 和 `tools.<name>(args)`；工具描述、参数和输出 schema 在调用时从注册表格式化；`run` 自身不在列表中，因为它不是程序内绑定。
+- **提示词记忆。** 精确的 `help("name")` 还会把该工具的完整定义固定进系统提示词。每次成功压缩后，刚被压缩区间内使用次数最多的 5 个工具会默认写入提示词。
 - **不再生成 SDK。** 本预设作用域内删除 `tools:sdk`、`tools:ptc-only` 以及各工具的 `tool:*`、`mcp:*` 说明段。
 - **单一可调用面。** 作用域 guard 拒绝模型直接调用 `run` 之外的任何工具；程序内部的嵌套调用放行。
 
@@ -40,13 +41,24 @@ dsh plugin --profile web add /absolute/path/to/mini-ptc-0.1.0.tgz
 | 调用 | 返回 |
 | --- | --- |
 | `help()` | 程序内可用的所有工具名，每行一个。 |
-| `help("name")` | 精确匹配：完整描述、参数 JSON Schema、输出 JSON Schema。 |
+| `help("name")` | 精确匹配：完整描述、参数 JSON Schema、输出 JSON Schema，并固定进系统提示词。 |
 | `help("拼错的名字")` | 最佳模糊匹配（前缀、子串、分词、子序列、编辑距离），输出 `name - 完整描述`。 |
 | `help("nothing")` | 与 `help()` 相同的名称列表。 |
 
 模糊匹配显示完整、归一化后的描述（不截断）；精确匹配保持原有的结构化详情。
 
 `help()` 会打印并返回结果。通常直接 `await help()` 即可；如果程序还需要这段文本，可用 `console.log(await help(...))` 或直接返回。
+
+### 提示词记忆
+
+动态的 `mini-ptc:help` 段会携带一个 `## Included tool reference` 区块，内容是完整工具定义：
+
+- **精确 help 固定。** `help("name")` 把该工具定义固定到会话结束；固定项按调用顺序累积并去重。
+- **压缩后默认项。** 每次成功的 `compaction/end` 后，插件统计自上次压缩以来程序内的工具调用次数，把前 5 个写入同一区块；随后计数清零，下一次压缩替换默认项，已固定的项保留。
+
+该段在下一次模型步骤组装。路由声明 `systemPromptUpdate: 'in-history'`（发行版 DeepSeek 适配器即是）时，变更后的提示词会追加到历史中，保留缓存前缀，而不是重写头部系统节点；不具备该能力的路由会重写头部。
+
+提示词状态按存活会话保存在内存中；会话销毁或进程重启会丢失固定项与计数。
 
 ## 配置
 
@@ -65,15 +77,18 @@ src/
   index.ts      Loader 命名空间：name、inject、Config、apply
   config.ts     Schemastery schema 与直接调用默认值
   runtime.ts    作用域声明、提示词段、waterfall、guard、工具
-  transport.ts  run 工具、绑定、prelude、运行时生命周期
+  transport.ts  run 工具、prelude、运行时生命周期
+  bindings.ts   tools 命名空间、隐藏 help 成员、串行分发
   help.ts       纯 help 格式化与模糊匹配
-  prompt.ts     紧凑 help 介绍
+  prompt.ts     紧凑介绍与已包含工具引用
+  prompt-state.ts  逐会话固定项与压缩后前五
 tests/
-  help.test.ts        目录与匹配规则
-  plugin.test.ts      Loader 形状与配置
-  integration.test.ts 真实 Cordis、工具注册表、提示词组装、执行
-  harness.ts          带 fake PTC runtime 的共享挂载
-  fake-runtime.ts     仅供测试的进程内 runtime
+  help.test.ts         目录与匹配规则
+  plugin.test.ts       Loader 形状与配置
+  prompt-state.test.ts 固定项、计数与前五排名
+  integration.test.ts  真实 Cordis、工具注册表、提示词组装、执行
+  harness.ts           带 fake PTC runtime 的共享挂载
+  fake-runtime.ts      仅供测试的进程内 runtime
 ```
 
 ## 开发
@@ -98,6 +113,9 @@ pnpm pack --dry-run --json
 - **移除了工具指导。** 本预设以 `help()` 返回的描述和 JSON Schema 作为工具文档；工具插件拥有的逐工具指导段在该作用域被删除。
 - **依赖宿主包。** 没有 Web/standard 工具包的裸 profile 无法直接使用该预设。
 - **不打宿主补丁。** `dsh-tools` 保留了 `run_code`，因此传输默认命名为 `run`；插件只使用公开的注册表与系统提示词服务。
+- **提示词记忆在内存中。** 固定项与调用计数随进程存活；重启或会话销毁会丢失。
+- **in-history 依赖路由能力。** 只有已准备路由声明 `systemPromptUpdate: 'in-history'` 时才追加到历史；否则重写头部系统节点。
+- **精确固定项没有上限。** 固定很多工具会持续增长系统提示词，直到会话结束；只有压缩后的前 5 个有上限。
 
 ## 许可证
 

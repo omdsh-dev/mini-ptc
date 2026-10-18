@@ -6,8 +6,12 @@
  * @module mini-ptc/prompt
  */
 
+import { formatDetails } from './help.ts'
+import type { ToolDoc } from './help.ts'
+
 /** One backtick, written without a template literal so this file stays plain. */
 const TICK = '\u0060'
+const NO_TOOLS = 0
 
 /**
  * Render the compact help introduction shown in place of the generated SDK.
@@ -31,4 +35,25 @@ function renderHelpPrompt(toolName: string): string {
   ].join('\n')
 }
 
-export { renderHelpPrompt }
+/**
+ * Render the help introduction plus any pinned or compaction-featured tools.
+ *
+ * @param toolName - The single directly callable transport tool.
+ * @param tools - Full tool definitions to include after the introduction.
+ * @returns Prompt text.
+ */
+function renderPrompt(toolName: string, tools: readonly ToolDoc[]): string {
+  const intro = renderHelpPrompt(toolName)
+  if (tools.length === NO_TOOLS) {
+    return intro
+  }
+  return [
+    intro,
+    '',
+    '## Included tool reference',
+    '',
+    tools.map((tool) => formatDetails(tool)).join('\n\n'),
+  ].join('\n')
+}
+
+export { renderHelpPrompt, renderPrompt }

@@ -5,14 +5,27 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+/* oxlint-disable import/no-empty-named-blocks, unicorn/require-module-specifiers -- Type-only import activates the compaction session-event declarations. */
+import type {} from '@deepseek-ai/dsh-compaction'
+/* oxlint-enable import/no-empty-named-blocks, unicorn/require-module-specifiers */
+import type { SessionEvent } from '@deepseek-ai/dsh-session'
 
 import type { PluginConfig } from './config.ts'
 import { resolveConfig } from './config.ts'
-import { renderHelpPrompt } from './prompt.ts'
+import { PromptStateStore, sessionIdOfScope } from './prompt-state.ts'
+import { renderPrompt } from './prompt.ts'
 import { createRunTool } from './transport.ts'
 
 /** Explicit allow result for the monotonic guard's string-or-undefined contract. */
 const ALLOW: string | undefined = undefined
+
+/** Whether one session event completed a compaction without an error. */
+function isSuccessfulCompactionEnd(event: SessionEvent): boolean {
+  if (event.type !== 'compaction/end') {
+    return false
+  }
+  return event.data.error === undefined
+}
 
 /**
  * Apply the plugin to its Cordis context.
@@ -38,11 +51,30 @@ function apply(ctx: Context, config: PluginConfig): void {
   // SDK, and the scoped presentation cannot inherit a deployment-wide ptc mode.
   ctx.tools.presentAs('native')
 
+  const promptState = new PromptStateStore()
+  ctx.on('session/event', (session, event) => {
+    if (isSuccessfulCompactionEnd(event)) {
+      promptState.compact(session.id)
+    }
+  })
+  ctx.on('session/disposed', (session) => {
+    promptState.delete(session.id)
+  })
+  ctx.effect((): (() => void) => (): void => {
+    promptState.clear()
+  })
+
   ctx.systemPrompt.section({
     name: 'mini-ptc:help',
     order: ctx.systemPrompt.getSectionOrder('TOOLS_SDK'),
     interpolate: false,
-    text: renderHelpPrompt(resolved.toolName),
+    text: (context) => {
+      const sessionId = sessionIdOfScope(context.scope)
+      if (sessionId === undefined) {
+        return renderPrompt(resolved.toolName, [])
+      }
+      return renderPrompt(resolved.toolName, promptState.docsFor(sessionId))
+    },
   })
 
   // oxlint-disable-next-line typescript/promise-function-async -- Cordis waterfall listeners return the downstream promise directly.
@@ -75,7 +107,14 @@ function apply(ctx: Context, config: PluginConfig): void {
     return `only ${resolved.toolName} is callable directly — call tools from inside a ${resolved.toolName} program; help() lists them`
   })
 
-  ctx.tools.register(createRunTool(ctx, resolved, runtime))
+  ctx.tools.register(
+    createRunTool({
+      ctx,
+      config: resolved,
+      runtime,
+      promptState,
+    }),
+  )
 }
 
 export { apply }

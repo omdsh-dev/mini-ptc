@@ -1,4 +1,5 @@
 /* oxlint-disable eslint/no-magic-numbers -- Harness counters and fixture values are local test data. */
+/* oxlint-disable unicorn/no-null -- A manual compaction event carries an explicit null turn. */
 /* oxlint-disable typescript/no-unsafe-type-assertion -- The fake agent is the scope key itself; the registry only uses it as an object identity. */
 /* oxlint-disable typescript/require-await -- Fixture tool bodies return already-resolved values. */
 /* oxlint-disable eslint/prefer-template -- Generated call ids and fixture text are assembled from fragments. */
@@ -15,6 +16,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { createScope } from '@deepseek-ai/dsh-scope'
+import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
 import { ToolRuntime, defineTool } from '@deepseek-ai/dsh-tools'
@@ -52,6 +54,8 @@ interface PluginHarness {
     toolName: string,
     args?: unknown,
   ) => Promise<ToolExecutionResult>
+  /** Emit a successful compaction end for the harness agent's session. */
+  emitCompaction: (sessionId?: string) => void
   /** Dispose only the plugin fiber so its registrations can be asserted removed. */
   disposePlugin: () => Promise<void>
   /** Dispose the plugin fiber and both scoped contexts. */
@@ -131,9 +135,9 @@ export async function createPluginHarness(
   const preset = createScope(ctx, presetKey)
   const fiber = await preset.ctx.plugin(plugin, options.config ?? {})
 
-  const agentKey = {}
+  const agentKey = { session: { id: 'harness-agent' } }
   const agent = createScope(ctx, agentKey, { parent: presetKey })
-  const outsideKey = {}
+  const outsideKey = { session: { id: 'harness-outside' } }
   const outside = createScope(ctx, outsideKey)
   const toolName = options.config?.toolName ?? 'run'
   let callCounter = 0
@@ -182,6 +186,16 @@ export async function createPluginHarness(
     },
     async callOutside(toolNameToCall, args) {
       return callWith(outsideKey, toolNameToCall, args ?? {})
+    },
+    emitCompaction(sessionId = 'harness-agent') {
+      const session = { id: sessionId } as unknown as Session
+      const event = {
+        type: 'compaction/end',
+        seq: 1,
+        time: Date.now(),
+        data: { compactionId: 'harness-compaction', turn: null },
+      } as unknown as SessionEvent
+      agent.ctx.emit('session/event', session, event)
     },
     async disposePlugin() {
       await fiber.dispose()

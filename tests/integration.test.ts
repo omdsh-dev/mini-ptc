@@ -125,6 +125,14 @@ describe('mini-ptc execution', () => {
       expect(exact).toContain('Parameters:')
       expect(exact).toContain('"path"')
 
+      const assembly = await harness.assemble()
+      const prompt = renderPrompt(assembly)
+      expect(prompt).toContain('## Included tool reference')
+      expect(prompt).toContain('Tool: read_file')
+      expect(prompt).toContain(
+        'Description: Read a file from disk and return its contents.',
+      )
+
       const fuzzy = valueOf(await harness.run('return await help("reed_file")'))
       expect(fuzzy).toContain(
         'read_file - Read a file from disk and return its contents.',
@@ -151,6 +159,26 @@ describe('mini-ptc execution', () => {
       // Help() also prints, so the same name list appears twice before the return value.
       expect(same.split('echo\nread_file')).toHaveLength(3)
       expect(same.endsWith('true')).toBe(true)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('adds the most-used tools after a compaction', async () => {
+    expect.hasAssertions()
+    const harness = await createPluginHarness()
+    try {
+      await harness.run('return await tools.echo({ text: "a" })')
+      await harness.run('return await tools.echo({ text: "b" })')
+      await harness.run('return await tools.read_file({ path: "/x" })')
+
+      harness.emitCompaction()
+      const assembly = await harness.assemble()
+      const prompt = renderPrompt(assembly)
+      expect(prompt).toContain('## Included tool reference')
+      expect(prompt).toContain('Tool: echo')
+      expect(prompt).toContain('Tool: read_file')
+      expect(prompt).toContain('Description: Echo one string back.')
     } finally {
       await harness.dispose()
     }

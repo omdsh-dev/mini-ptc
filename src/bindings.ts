@@ -18,8 +18,9 @@ import type {
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 
 import type { ResolvedConfig } from './config.ts'
-import { renderHelp } from './help.ts'
+import { resolveHelp } from './help.ts'
 import type { ToolDoc } from './help.ts'
+import type { PromptStateStore } from './prompt-state.ts'
 
 /** The registry input shape for one nested dispatch. */
 type ExecuteInput = Parameters<Context['tools']['execute']>[0]
@@ -152,6 +153,7 @@ interface BindingOptions {
   config: ResolvedConfig
   exec: ToolRunContext
   controller: AbortController
+  promptState: PromptStateStore
 }
 
 /** The constructed namespace plus the tasks the caller must drain. */
@@ -163,8 +165,12 @@ interface BindingSet {
 
 /** Build the tools namespace and its help member for one program. */
 function createToolBindings(options: BindingOptions): BindingSet {
-  const { ctx, config, exec, controller } = options
+  const { ctx, config, exec, controller, promptState } = options
   const schemas = ctx.tools.schemas(exec.agent)
+  const docs = buildToolDocs(ctx, exec.agent, config.toolName)
+  const docsByName = new Map<string, ToolDoc>(
+    docs.map((doc) => [doc.name, doc]),
+  )
   const helpBindingName = pickHelpBindingName(schemas)
   // oxlint-disable-next-line typescript/no-unsafe-assignment -- A null-prototype namespace is required for exotic tool names.
   const functions: Record<string, PtcBindingFunction> = Object.create(null)
@@ -180,6 +186,10 @@ function createToolBindings(options: BindingOptions): BindingSet {
       throw new Error(
         'the program is aborted; ' + schema.name + ' was not dispatched',
       )
+    }
+    const doc = docsByName.get(schema.name)
+    if (exec.agent !== undefined && doc !== undefined) {
+      promptState.recordUse(exec.agent.session.id, doc)
     }
     dispatchCount += 1
     // oxlint-disable-next-line eslint/new-cap -- ToolCallId is a stateless brand factory, not a constructor.
@@ -227,8 +237,11 @@ function createToolBindings(options: BindingOptions): BindingSet {
 
   // oxlint-disable-next-line typescript/require-await -- PtcBindingFunction is async by contract.
   functions[helpBindingName] = async (rawArgs): Promise<PtcJsonValue> => {
-    const query = readHelpQuery(rawArgs)
-    return renderHelp(buildToolDocs(ctx, exec.agent, config.toolName), query)
+    const resolution = resolveHelp(docs, readHelpQuery(rawArgs))
+    if (resolution.exact !== undefined && exec.agent !== undefined) {
+      promptState.pin(exec.agent.session.id, resolution.exact)
+    }
+    return resolution.text
   }
 
   return { functions, pending, helpBindingName }

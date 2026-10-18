@@ -194,10 +194,46 @@ function findToolMatch(
   return best.tool
 }
 
+/** One help response plus the exact tool it resolved, when there was one. */
+interface HelpResolution {
+  /** Model-facing text. */
+  text: string
+  /** Exact match, for consumers that pin the full definition into the prompt. */
+  exact?: ToolDoc
+}
+
 /**
- * Render the help response: no query lists tool names, an exact match shows the
- * full definition, a fuzzy match shows the name and full description, and a
+ * Resolve one help response: no query lists tool names, an exact match shows
+ * the full definition, a fuzzy match shows the name and full description, and a
  * miss falls back to the name list.
+ *
+ * @param tools - Every tool visible to the calling program.
+ * @param query - Optional tool name or fragment.
+ * @returns Model-facing text and the exact tool when one matched.
+ */
+function resolveHelp(
+  tools: readonly ToolDoc[],
+  query: string | undefined,
+): HelpResolution {
+  const normalized = query === undefined ? '' : normalizeText(query)
+  if (normalized.length === 0) {
+    return { text: formatNames(tools) }
+  }
+  const exact = tools.find(
+    (tool) => tool.name.toLowerCase() === normalized.toLowerCase(),
+  )
+  if (exact !== undefined) {
+    return { text: formatDetails(exact), exact }
+  }
+  const match = findToolMatch(tools, normalized)
+  if (match === undefined) {
+    return { text: formatNames(tools) }
+  }
+  return { text: formatFuzzy(match) }
+}
+
+/**
+ * Render the help response.
  *
  * @param tools - Every tool visible to the calling program.
  * @param query - Optional tool name or fragment.
@@ -207,21 +243,7 @@ function renderHelp(
   tools: readonly ToolDoc[],
   query: string | undefined,
 ): string {
-  const normalized = query === undefined ? '' : normalizeText(query)
-  if (normalized.length === 0) {
-    return formatNames(tools)
-  }
-  const exact = tools.find(
-    (tool) => tool.name.toLowerCase() === normalized.toLowerCase(),
-  )
-  if (exact !== undefined) {
-    return formatDetails(exact)
-  }
-  const match = findToolMatch(tools, normalized)
-  if (match === undefined) {
-    return formatNames(tools)
-  }
-  return formatFuzzy(match)
+  return resolveHelp(tools, query).text
 }
 
 export {
@@ -230,5 +252,7 @@ export {
   formatFuzzy,
   formatNames,
   renderHelp,
+  resolveHelp,
+  type HelpResolution,
   type ToolDoc,
 }

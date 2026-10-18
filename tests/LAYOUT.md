@@ -4,12 +4,16 @@
   rules.
 - `tests/plugin.test.ts` owns the Loader export shape and configuration
   validation.
+- `tests/prompt-state.test.ts` owns the per-session pin store, usage counting,
+  featured-tool ranking, and scope-to-session resolution.
 - `tests/integration.test.ts` mounts the production plugin with the real
   `dsh-system-prompt` and `dsh-tools` services on scoped Cordis contexts. It
-  proves prompt narrowing, `help()` behavior, nested dispatch, the direct-call
+  proves prompt narrowing, `help()` behavior, exact-help pinning, the
+  post-compaction top-five prompt update, nested dispatch, the direct-call
   guard, custom transport names, and disposal.
-- `tests/harness.ts` provides the shared real-Cordis mount;
-  `tests/fake-runtime.ts` is the in-process `PtcRuntime` used only by tests.
+- `tests/harness.ts` provides the shared real-Cordis mount, an agent-shaped fake
+  session, and a synthetic `compaction/end` event; `tests/fake-runtime.ts` is
+  the in-process `PtcRuntime` used only by tests.
 
 No snapshot fixtures are used: the catalog and full-detail text are asserted
 directly, and the integration suite uses deterministic fixture tools.
