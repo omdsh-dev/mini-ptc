@@ -1,4 +1,5 @@
 /* oxlint-disable eslint/no-magic-numbers -- Usage counts are literal fixtures. */
+/* oxlint-disable vitest/prefer-to-be-truthy, vitest/prefer-to-be-falsy -- Strict boolean matchers are required by prefer-strict-boolean-matchers. */
 
 import type { JsonSchemaNode } from '@deepseek-ai/dsh-tools'
 import { describe, expect, it } from 'vitest'
@@ -35,6 +36,16 @@ function use(options: UseOptions): void {
 }
 
 describe('prompt state', () => {
+  it('tracks first help discovery per session', () => {
+    expect.hasAssertions()
+    const store = new PromptStateStore()
+    expect(store.hasCalledHelp('session-a')).toBe(false)
+    store.markHelpCalled('session-a')
+    expect(store.hasCalledHelp('session-a')).toBe(true)
+    store.delete('session-a')
+    expect(store.hasCalledHelp('session-a')).toBe(false)
+  })
+
   it('pins exact tool documents', () => {
     expect.hasAssertions()
     const store = new PromptStateStore()

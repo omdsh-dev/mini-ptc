@@ -49,6 +49,8 @@ Fuzzy results show the full, normalized description (never truncated); exact res
 
 `help()` prints the response and returns it. Use `await help()` by itself for normal discovery; use `console.log(await help(...))` or return it when the program needs the text again.
 
+The first program in each session must be exactly `return await help()` or `await help()` (an optional string name is allowed). Any other source is rejected before execution, and discovery is recorded only if that program succeeds. A failed first program leaves the requirement in place. Later programs may omit discovery.
+
 ### Prompt memory
 
 The dynamic `mini-ptc:help` section carries an `## Included tool reference` block with full tool definitions. Two sources feed it:
@@ -79,13 +81,14 @@ src/
   runtime.ts    Scope declarations, prompt section, waterfall, guard, tool
   transport.ts  run tool, prelude, runtime lifecycle
   bindings.ts   tools namespace, hidden help member, serial dispatch
-  help.ts       Pure help formatting and fuzzy matching
+  help.ts       Help formatting, fuzzy matching, and source detection
   prompt.ts     Compact introduction plus included tool reference
-  prompt-state.ts  Per-session pins and post-compaction top five
+  prompt-state.ts  Per-session help state, pins, and post-compaction top five
 tests/
   help.test.ts         Catalog and matching rules
   plugin.test.ts       Loader shape and configuration
-  prompt-state.test.ts Pins, counts, and featured-tool ranking
+  prompt-state.test.ts First-help state, pins, counts, and featured ranking
+  first-run.test.ts    First-program discovery and transactional commit
   integration.test.ts  Real Cordis, tool registry, prompt assembly, execution
   harness.ts           Shared mount with the fake PTC runtime
   fake-runtime.ts      In-process runtime used only by tests

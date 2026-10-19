@@ -49,6 +49,10 @@ const CALL_ID_SEPARATOR = ':mini:'
 /** No query was supplied to help(). */
 const NO_QUERY = ''
 
+/** Rejection for a first program that attempts any tool call besides help(). */
+const FIRST_PROGRAM_ONLY_HELP =
+  'the first program in this session must be exactly one help() call; other tool calls are not allowed'
+
 /** The run-scoped prelude that exposes a bare help() to user programs. */
 function renderPrelude(helpBindingName: string): string {
   const access = 'tools[' + JSON.stringify(helpBindingName) + ']'
@@ -154,18 +158,22 @@ interface BindingOptions {
   exec: ToolRunContext
   controller: AbortController
   promptState: PromptStateStore
+  firstProgram: boolean
 }
 
-/** The constructed namespace plus the tasks the caller must drain. */
+/** The constructed namespace plus the tasks and state the caller must commit. */
 interface BindingSet {
   functions: Record<string, PtcBindingFunction>
   pending: Set<Promise<PtcJsonValue>>
   helpBindingName: string
+  helpCalled: () => boolean
+  pendingExact: () => readonly ToolDoc[]
+  firstProgramViolated: () => boolean
 }
 
 /** Build the tools namespace and its help member for one program. */
 function createToolBindings(options: BindingOptions): BindingSet {
-  const { ctx, config, exec, controller, promptState } = options
+  const { ctx, config, exec, controller, promptState, firstProgram } = options
   const schemas = ctx.tools.schemas(exec.agent)
   const docs = buildToolDocs(ctx, exec.agent, config.toolName)
   const docsByName = new Map<string, ToolDoc>(
@@ -177,6 +185,9 @@ function createToolBindings(options: BindingOptions): BindingSet {
   const pending = new Set<Promise<PtcJsonValue>>()
   const gate = createSerialGate()
   let dispatchCount = 0
+  let helpCalled = false
+  const pendingExact: ToolDoc[] = []
+  let firstProgramViolated = false
 
   const dispatch = async (
     schema: ToolSchema,
@@ -186,6 +197,10 @@ function createToolBindings(options: BindingOptions): BindingSet {
       throw new Error(
         'the program is aborted; ' + schema.name + ' was not dispatched',
       )
+    }
+    if (firstProgram) {
+      firstProgramViolated = true
+      throw new Error(FIRST_PROGRAM_ONLY_HELP)
     }
     const doc = docsByName.get(schema.name)
     if (exec.agent !== undefined && doc !== undefined) {
@@ -238,19 +253,32 @@ function createToolBindings(options: BindingOptions): BindingSet {
   // oxlint-disable-next-line typescript/require-await -- PtcBindingFunction is async by contract.
   functions[helpBindingName] = async (rawArgs): Promise<PtcJsonValue> => {
     const resolution = resolveHelp(docs, readHelpQuery(rawArgs))
-    if (resolution.exact !== undefined && exec.agent !== undefined) {
-      promptState.pin(exec.agent.session.id, resolution.exact)
+    helpCalled = true
+    if (exec.agent !== undefined && resolution.exact !== undefined) {
+      if (firstProgram) {
+        pendingExact.push(resolution.exact)
+      } else {
+        promptState.pin(exec.agent.session.id, resolution.exact)
+      }
     }
     return resolution.text
   }
 
-  return { functions, pending, helpBindingName }
+  return {
+    functions,
+    pending,
+    helpBindingName,
+    helpCalled: () => helpCalled,
+    pendingExact: () => pendingExact,
+    firstProgramViolated: () => firstProgramViolated,
+  }
 }
 
 export {
   CALL_ID_SEPARATOR,
   ERROR_CLASS,
   ERROR_MEMBER,
+  FIRST_PROGRAM_ONLY_HELP,
   TOOLS_GLOBAL,
   buildToolDocs,
   createSerialGate,

@@ -27,6 +27,7 @@ function renderHelpPrompt(toolName: string): string {
     `Only ${TICK}${toolName}${TICK} can be called directly. Inside its program:`,
     '',
     `- ${TICK}await help()${TICK} lists every available tool name.`,
+    `- The first program in each session must be exactly ${TICK}return await help()${TICK} or ${TICK}await help()${TICK} (an optional string name is allowed). Any other source is rejected before execution, and discovery is recorded only if that program succeeds. Later programs may omit it.`,
     `- ${TICK}await help("name")${TICK} returns that tool's full description, parameters, and output. A fuzzy match returns the name and full description; when nothing matches, the name list is returned instead.`,
     `- Call a tool after ${TICK}help()${TICK} gives you its exact name and arguments: ${toolsAccess}.`,
     `- Tool failures reject with ${TICK}ToolCallError${TICK}; its ${TICK}toolName${TICK} identifies the failing tool.`,

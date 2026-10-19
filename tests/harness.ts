@@ -33,6 +33,8 @@ const plugin = { Config, apply, inject, name }
 interface HarnessOptions {
   /** Partial plugin configuration; defaults are applied as in production. */
   config?: PluginConfig
+  /** Prime the agent session with one help() call; defaults to true. */
+  primeHelp?: boolean
 }
 
 /** Observable production composition used by the integration suites. */
@@ -164,6 +166,16 @@ export async function createPluginHarness(
   ): Promise<ToolExecutionResult> => {
     const result = await callWith(agentKey, callName, args)
     return result
+  }
+
+  if (options.primeHelp ?? true) {
+    const primed = await callAs(toolName, {
+      code: 'return await help()',
+      description: 'Prime help discovery',
+    })
+    if (primed.isError) {
+      throw new TypeError(primed.error.message)
+    }
   }
 
   return {

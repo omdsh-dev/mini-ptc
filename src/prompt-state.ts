@@ -23,11 +23,23 @@ interface SessionPromptState {
   pinned: Set<string>
   /** Tools selected from the last compacted segment. */
   featured: string[]
+  /** Whether this session has called help() at least once. */
+  helped: boolean
 }
 
 /** Store prompt references by session id; owned by the plugin fiber. */
 class PromptStateStore {
   private readonly states = new Map<string, SessionPromptState>()
+
+  /** Mark that this session has performed its first help() discovery. */
+  public markHelpCalled(sessionId: string): void {
+    this.get(sessionId).helped = true
+  }
+
+  /** Whether this session has called help() at least once. */
+  public hasCalledHelp(sessionId: string): boolean {
+    return this.states.get(sessionId)?.helped === true
+  }
 
   /** Pin one exact tool reference for the session. */
   public pin(sessionId: string, tool: ToolDoc): void {
@@ -100,6 +112,7 @@ class PromptStateStore {
         docs: new Map(),
         pinned: new Set(),
         featured: [],
+        helped: false,
       }
       this.states.set(sessionId, state)
     }

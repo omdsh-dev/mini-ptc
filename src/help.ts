@@ -1,7 +1,7 @@
 /**
- * Pure tool-document formatting and fuzzy lookup for the in-program `help()`
- * function. Kept free of Cordis and registry state so the catalog rules can be
- * tested without a host.
+ * Pure tool-document formatting, fuzzy lookup, and source-level help-call
+ * detection for the in-program `help()` function. Kept free of Cordis and
+ * registry state so the catalog rules can be tested without a host.
  *
  * @module mini-ptc/help
  */
@@ -194,6 +194,15 @@ function findToolMatch(
   return best.tool
 }
 
+/** The complete source forms accepted for the first discovery program. */
+const ONLY_HELP_PROGRAM =
+  /^\s*(?:return\s+)?await\s+help\s*\(\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')?\s*\)\s*;?\s*$/u
+
+/** Whether source is exactly one awaited help() call, optionally returned. */
+function isOnlyHelpProgram(code: string): boolean {
+  return ONLY_HELP_PROGRAM.test(code)
+}
+
 /** One help response plus the exact tool it resolved, when there was one. */
 interface HelpResolution {
   /** Model-facing text. */
@@ -247,6 +256,7 @@ function renderHelp(
 }
 
 export {
+  isOnlyHelpProgram,
   findToolMatch,
   formatDetails,
   formatFuzzy,

@@ -49,6 +49,8 @@ dsh plugin --profile web add /absolute/path/to/oh-my-dsh-mini-ptc-0.1.0.tgz
 
 `help()` 会打印并返回结果。通常直接 `await help()` 即可；如果程序还需要这段文本，可用 `console.log(await help(...))` 或直接返回。
 
+每个会话的第一个程序必须恰好是 `return await help()` 或 `await help()`（允许可选的字符串名称）。其他源码会在执行前被拒绝；只有该程序成功后才记录发现状态；首个程序失败则仍视为未发现。后续程序可以省略发现步骤。
+
 ### 提示词记忆
 
 动态的 `mini-ptc:help` 段会携带一个 `## Included tool reference` 区块，内容是完整工具定义：
@@ -79,13 +81,14 @@ src/
   runtime.ts    作用域声明、提示词段、waterfall、guard、工具
   transport.ts  run 工具、prelude、运行时生命周期
   bindings.ts   tools 命名空间、隐藏 help 成员、串行分发
-  help.ts       纯 help 格式化与模糊匹配
+  help.ts       纯 help 格式化、模糊匹配与源码检测
   prompt.ts     紧凑介绍与已包含工具引用
-  prompt-state.ts  逐会话固定项与压缩后前五
+  prompt-state.ts  逐会话 help 状态、固定项与压缩后前五
 tests/
   help.test.ts         目录与匹配规则
   plugin.test.ts       Loader 形状与配置
-  prompt-state.test.ts 固定项、计数与前五排名
+  prompt-state.test.ts 首次 help、固定项、计数与前五排名
+  first-run.test.ts    首个程序的发现与事务性提交
   integration.test.ts  真实 Cordis、工具注册表、提示词组装、执行
   harness.ts           带 fake PTC runtime 的共享挂载
   fake-runtime.ts      仅供测试的进程内 runtime

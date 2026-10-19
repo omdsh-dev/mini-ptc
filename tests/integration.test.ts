@@ -41,6 +41,9 @@ describe('mini-ptc prompt composition', () => {
       const prompt = renderPrompt(assembly)
       expect(prompt).toContain('## Tool access with help()')
       expect(prompt).toContain('Only \u0060run\u0060 can be called directly.')
+      expect(prompt).toContain(
+        'The first program in each session must be exactly',
+      )
       expect(prompt).not.toContain('ToolArgsMap')
       expect(prompt).not.toContain('Program-only SDK bindings')
       expect(prompt).not.toContain('Fixture tool guidance')

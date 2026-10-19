@@ -24,11 +24,13 @@ import type { WorkingDirectoryService } from '@deepseek-ai/dsh-working-directory
 import {
   ERROR_CLASS,
   ERROR_MEMBER,
+  FIRST_PROGRAM_ONLY_HELP,
   TOOLS_GLOBAL,
   createToolBindings,
   renderPrelude,
 } from './bindings.ts'
 import type { ResolvedConfig } from './config.ts'
+import { isOnlyHelpProgram } from './help.ts'
 import type { PromptStateStore } from './prompt-state.ts'
 
 const JSON_INDENT = 2
@@ -204,6 +206,14 @@ async function resolveExecutionContext(
 
 async function executeProgram(options: ExecuteOptions): Promise<string> {
   const { ctx, config, runtime, args, exec, promptState } = options
+  const sessionId = exec.agent?.session.id
+  const firstProgram =
+    sessionId !== undefined && !promptState.hasCalledHelp(sessionId)
+  if (firstProgram && !isOnlyHelpProgram(args.code)) {
+    throw new Error(
+      'the first program in this session must be exactly "return await help()" or "await help()"; the program was not executed',
+    )
+  }
   const controller = new AbortController()
   const onAbort = (): void => {
     controller.abort(exec.signal.reason)
@@ -215,13 +225,15 @@ async function executeProgram(options: ExecuteOptions): Promise<string> {
   }
 
   const { cwd, sandboxPolicy } = await resolveExecutionContext(ctx, exec)
-  const { functions, pending, helpBindingName } = createToolBindings({
+  const bindings = createToolBindings({
     ctx,
     config,
     exec,
     controller,
     promptState,
+    firstProgram,
   })
+  const { functions, pending, helpBindingName } = bindings
   try {
     const program = renderPrelude(helpBindingName) + args.code
     const request = buildRequest({
@@ -238,6 +250,20 @@ async function executeProgram(options: ExecuteOptions): Promise<string> {
     const result = await runtime.run(spec)
     if (result.error !== undefined) {
       throw new Error(describeFailure(result))
+    }
+    if (firstProgram && sessionId !== undefined) {
+      if (bindings.firstProgramViolated()) {
+        throw new Error(FIRST_PROGRAM_ONLY_HELP)
+      }
+      if (!bindings.helpCalled()) {
+        throw new Error(
+          'the first program in this session must be exactly one help() call; discovery was not recorded',
+        )
+      }
+      promptState.markHelpCalled(sessionId)
+      for (const doc of bindings.pendingExact()) {
+        promptState.pin(sessionId, doc)
+      }
     }
     return describeSuccess(result)
   } finally {
@@ -265,7 +291,7 @@ function createRunTool(options: RunToolOptions): ToolDefinition {
   const { ctx, config, runtime, promptState } = options
   const instructions = runtime.executionInstructions
   const description = [
-    'Execute a TypeScript program against the available tools. Call await help() inside the program to list tools and await help("name") for one tool\'s full schema.',
+    'Execute a TypeScript program against the available tools. Call await help() inside the program to list tools and await help("name") for one tool\'s full schema. The first run in each session must be exactly "return await help()" or "await help()" (an optional string name is allowed); any other source is rejected before execution, and discovery is recorded only after the run succeeds.',
     instructions,
   ]
     .filter((part) => part.length > NONE)

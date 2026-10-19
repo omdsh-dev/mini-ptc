@@ -1,10 +1,16 @@
 /* oxlint-disable eslint/no-magic-numbers -- Catalog fixtures use literal budgets and limits. */
 /* oxlint-disable vitest/max-expects -- Contract tests assert related catalog facts together. */
+/* oxlint-disable vitest/prefer-to-be-truthy, vitest/prefer-to-be-falsy -- Strict boolean matchers are required by prefer-strict-boolean-matchers. */
 
 import type { JsonSchemaNode } from '@deepseek-ai/dsh-tools'
 import { describe, expect, it } from 'vitest'
 
-import { findToolMatch, formatNames, renderHelp } from '#src/help'
+import {
+  findToolMatch,
+  formatNames,
+  isOnlyHelpProgram,
+  renderHelp,
+} from '#src/help'
 import type { ToolDoc } from '#src/help'
 
 const stringSchema: JsonSchemaNode = { type: 'string' }
@@ -113,5 +119,35 @@ describe('help formatting', () => {
     expect.hasAssertions()
     const match = findToolMatch(docs(), 'read')
     expect(match?.name).toBe('read_file')
+  })
+})
+
+describe('first-program source validation', () => {
+  it('accepts exactly one awaited help call', () => {
+    expect.hasAssertions()
+    for (const code of [
+      'return await help()',
+      'await help()',
+      'return await help("read_file")',
+      "await help('echo');",
+      '  return  await help(  )  ',
+    ]) {
+      expect(isOnlyHelpProgram(code)).toBe(true)
+    }
+  })
+
+  it('rejects any other source', () => {
+    expect.hasAssertions()
+    for (const code of [
+      'return await tools.echo({})',
+      'await help(); return "extra"',
+      'const text = await help(); return text',
+      'console.log(await help())',
+      '// help()',
+      'return await help(name)',
+      'return help()',
+    ]) {
+      expect(isOnlyHelpProgram(code)).toBe(false)
+    }
   })
 })
