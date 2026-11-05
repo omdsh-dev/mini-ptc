@@ -10,8 +10,12 @@ PTC transport plus the preset that composes it.
 - Keep the function-plugin named exports `name`, `inject`, `Config`, and
   `apply`; never add a default export.
 - Own every registration with the plugin fiber and prove disposal. The
-  transport, prompt section, waterfall, guard, and scope declaration all lift
-  when the preset fiber disposes.
+  transport, prompt section, waterfall, guard, and scoped executor selection all
+  lift when the preset fiber disposes.
+- Presentation is an executor, not a mode: the preset selects its own tool
+  executor so only the transport schema reaches the model. Nested program calls
+  run through the shared registry pipeline with the transport token as their
+  parent.
 - Keep `engines.dsh`, `engines.node`, `dsh.manifestVersion`,
   `dsh.bundle.patch`, `exports`, `files`, and the exported display assets
   synchronized with the package.

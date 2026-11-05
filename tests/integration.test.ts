@@ -91,14 +91,20 @@ describe('mini-ptc prompt composition', () => {
     try {
       await harness.disposePlugin()
 
-      const assembly = await harness.assemble()
+      // The host keeps a vacated scoped selection unavailable.
+      // It does not fall back to the deployment executor.
+      await expect(harness.assemble()).rejects.toThrow(
+        /tool executor is unavailable/iu,
+      )
+
+      const assembly = await harness.assembleOutside()
       expect(assembly.tools.map((tool) => tool.name).toSorted()).toStrictEqual([
         'echo',
         'read_file',
       ])
       expect(renderPrompt(assembly)).not.toContain('## Tool access with help()')
 
-      const echoed = await harness.call('echo', { text: 'after dispose' })
+      const echoed = await harness.callOutside('echo', { text: 'after dispose' })
       expect(echoed.isError).toBe(false)
     } finally {
       await harness.dispose()

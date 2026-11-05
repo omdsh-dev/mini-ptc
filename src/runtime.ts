@@ -9,6 +9,18 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-compaction'
 /* oxlint-enable import/no-empty-named-blocks, unicorn/require-module-specifiers */
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { projectToolSchema } from '@deepseek-ai/dsh-tools'
+import type {
+  ToolBatchInput,
+  ToolBatchResult,
+  ToolDefinition,
+  ToolExecutor,
+  ToolModelInput,
+} from '@deepseek-ai/dsh-tools'
+import {
+  ToolExecutionPipeline,
+  executeToolBatch,
+} from '@deepseek-ai/dsh-tools/pipeline'
 
 import type { PluginConfig } from './config.ts'
 import { resolveConfig } from './config.ts'
@@ -18,6 +30,39 @@ import { createRunTool } from './transport.ts'
 
 /** Explicit allow result for the monotonic guard's string-or-undefined contract. */
 const ALLOW: string | undefined = undefined
+
+/** Only the transport is visible, so direct batches never dispatch in parallel. */
+const SERIAL_LIMIT = 1
+
+/**
+ * Build the tool executor this preset selects.
+ *
+ * The executor presents only the transport schema, so the model never sees a
+ * generated PTC SDK or the other tool schemas, and settles direct batches through
+ * the pipeline that also carries nested program dispatch.
+ *
+ * @param pipeline - Registry pipeline owned by this plugin fiber.
+ * @param toolName - The registered transport name.
+ * @returns The executor for this preset's scope.
+ */
+function createExecutor(
+  pipeline: ToolExecutionPipeline,
+  toolName: string,
+): ToolExecutor {
+  return {
+    describe(tools: readonly ToolDefinition[]): ToolModelInput {
+      return {
+        schemas: tools
+          .filter((tool) => tool.name === toolName)
+          .map((tool) => projectToolSchema(tool, false)),
+      }
+    },
+    async execute(input: ToolBatchInput): Promise<ToolBatchResult> {
+      const settled = await executeToolBatch(input, pipeline, () => SERIAL_LIMIT)
+      return settled
+    },
+  }
+}
 
 /** Whether one session event completed a compaction without an error. */
 function isSuccessfulCompactionEnd(event: SessionEvent): boolean {
@@ -47,9 +92,14 @@ function apply(ctx: Context, config: PluginConfig): void {
     )
   }
 
-  // Keep the transport native to the registry: the model never sees a generated
-  // SDK, and the scoped presentation cannot inherit a deployment-wide ptc mode.
-  ctx.tools.presentAs('native')
+  // One pipeline owns policy, cancellation, and result settlement.
+  // Direct and nested calls share it.
+  // Nested inputs carry the transport token as their parent for the guard.
+  const pipeline = new ToolExecutionPipeline(ctx)
+
+  // Present only the transport in this preset's scope.
+  // The selection cannot inherit a deployment-wide PTC executor.
+  ctx.tools.setExecutor(createExecutor(pipeline, resolved.toolName))
 
   const promptState = new PromptStateStore()
   ctx.on('session/event', (session, event) => {
@@ -78,10 +128,7 @@ function apply(ctx: Context, config: PluginConfig): void {
   })
 
   // oxlint-disable-next-line typescript/promise-function-async -- Cordis waterfall listeners return the downstream promise directly.
-  ctx.on('system-prompt/assemble', (assembly, context, next) => {
-    const transport = ctx.tools
-      .schemas(context.scope)
-      .find((schema) => schema.name === resolved.toolName)
+  ctx.on('system-prompt/assemble', (assembly, _context, next) => {
     assembly.sections = assembly.sections.filter(
       (section) =>
         // Drop generated SDK and tool-guidance sections; help() replaces them.
@@ -89,11 +136,6 @@ function apply(ctx: Context, config: PluginConfig): void {
         && !section.name.startsWith('tool:')
         && !section.name.startsWith('mcp:'),
     )
-    if (transport === undefined) {
-      assembly.tools = []
-    } else {
-      assembly.tools = [transport]
-    }
     return next()
   })
 
@@ -113,6 +155,7 @@ function apply(ctx: Context, config: PluginConfig): void {
       config: resolved,
       runtime,
       promptState,
+      pipeline,
     }),
   )
 }

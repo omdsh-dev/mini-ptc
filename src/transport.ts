@@ -19,6 +19,7 @@ import type {
 import type { SandboxPolicyService } from '@deepseek-ai/dsh-sandbox-policy'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
+import type { ToolExecutionPipeline } from '@deepseek-ai/dsh-tools/pipeline'
 import type { WorkingDirectoryService } from '@deepseek-ai/dsh-working-directory'
 
 import {
@@ -149,14 +150,19 @@ function buildRequest(options: RequestOptions): PtcRunRequest {
   return request
 }
 
-/** Options for one program execution. */
-interface ExecuteOptions {
+/** Host services shared by the transport definition and each program. */
+interface TransportServices {
   ctx: Context
   config: ResolvedConfig
   runtime: PtcRuntime
+  promptState: PromptStateStore
+  pipeline: ToolExecutionPipeline
+}
+
+/** Options for one program execution. */
+interface ExecuteOptions extends TransportServices {
   args: { code: string; timeoutMs?: number }
   exec: ToolRunContext
-  promptState: PromptStateStore
 }
 
 /** Resolved session directory and file policy for one program. */
@@ -205,7 +211,7 @@ async function resolveExecutionContext(
 }
 
 async function executeProgram(options: ExecuteOptions): Promise<string> {
-  const { ctx, config, runtime, args, exec, promptState } = options
+  const { ctx, config, runtime, args, exec, promptState, pipeline } = options
   const sessionId = exec.agent?.session.id
   const firstProgram =
     sessionId !== undefined && !promptState.hasCalledHelp(sessionId)
@@ -231,6 +237,7 @@ async function executeProgram(options: ExecuteOptions): Promise<string> {
     exec,
     controller,
     promptState,
+    pipeline,
     firstProgram,
   })
   const { functions, pending, helpBindingName } = bindings
@@ -273,22 +280,14 @@ async function executeProgram(options: ExecuteOptions): Promise<string> {
   }
 }
 
-/** Inputs for one transport tool definition. */
-interface RunToolOptions {
-  ctx: Context
-  config: ResolvedConfig
-  runtime: PtcRuntime
-  promptState: PromptStateStore
-}
-
 /**
  * Build the transport tool definition.
  *
- * @param options - Scoped context, config, runtime, and prompt state.
+ * @param options - Scoped context, config, runtime, prompt state, and pipeline.
  * @returns A registry-ready tool definition.
  */
-function createRunTool(options: RunToolOptions): ToolDefinition {
-  const { ctx, config, runtime, promptState } = options
+function createRunTool(options: TransportServices): ToolDefinition {
+  const { ctx, config, runtime, promptState, pipeline } = options
   const instructions = runtime.executionInstructions
   const description = [
     'Execute a TypeScript program against the available tools. Call await help() inside the program to list tools and await help("name") for one tool\'s full schema. The first run in each session must be exactly "return await help()" or "await help()" (an optional string name is allowed); any other source is rejected before execution, and discovery is recorded only after the run succeeds.',
@@ -338,6 +337,7 @@ function createRunTool(options: RunToolOptions): ToolDefinition {
         args,
         exec,
         promptState,
+        pipeline,
       })
       return output
     },

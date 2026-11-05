@@ -19,6 +19,10 @@ import { createScope } from '@deepseek-ai/dsh-scope'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
+import {
+  apply as applyNativeExecutor,
+  inject as injectNativeExecutor,
+} from '@deepseek-ai/dsh-tool-executor-native'
 import { ToolRuntime, defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 
@@ -122,7 +126,12 @@ export async function createPluginHarness(
 ): Promise<PluginHarness> {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt, {})
-  await ctx.plugin(ToolRuntime, { mode: 'native' })
+  await ctx.plugin(ToolRuntime, {})
+  // The deployment's root executor; the preset's mini-ptc executor shadows it.
+  await ctx.plugin({
+    inject: injectNativeExecutor,
+    apply: applyNativeExecutor,
+  })
   await ctx.plugin(FakePtcRuntime)
 
   registerEcho(ctx)
@@ -150,14 +159,23 @@ export async function createPluginHarness(
     args: unknown,
   ): Promise<ToolExecutionResult> => {
     callCounter += 1
-    const result = await ctx.tools.execute({
-      callId: ToolCallId('harness:' + String(callCounter)),
-      name: callName,
-      arguments: args,
+    const batch = await ctx.tools.execute({
+      calls: [
+        {
+          type: 'tool-call',
+          id: ToolCallId('harness:' + String(callCounter)),
+          name: callName,
+          arguments: JSON.stringify(args ?? {}),
+        },
+      ],
       agent: scopeKey as unknown as Agent,
       signal: new AbortController().signal,
     })
-    return result
+    const [settled] = batch.results
+    if (settled === undefined) {
+      throw new TypeError('tool batch settled no result')
+    }
+    return settled.result
   }
 
   const callAs = async (

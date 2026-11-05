@@ -15,18 +15,17 @@ import type {
   PtcBindingFunction,
   PtcJsonValue,
 } from '@deepseek-ai/dsh-ptc-runtime'
-import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
+import type {
+  ToolExecutionInput,
+  ToolExecutionResult,
+  ToolRunContext,
+} from '@deepseek-ai/dsh-tools'
+import type { ToolExecutionPipeline } from '@deepseek-ai/dsh-tools/pipeline'
 
 import type { ResolvedConfig } from './config.ts'
 import { resolveHelp } from './help.ts'
 import type { ToolDoc } from './help.ts'
 import type { PromptStateStore } from './prompt-state.ts'
-
-/** The registry input shape for one nested dispatch. */
-type ExecuteInput = Parameters<Context['tools']['execute']>[0]
-
-/** The agent object carried by one execution, when the caller has one. */
-type ExecutionAgent = NonNullable<ExecuteInput['agent']>
 
 /** The binding namespace the generated program sees. */
 const TOOLS_GLOBAL = 'tools'
@@ -140,15 +139,64 @@ function createSerialGate(): SerialGate {
   }
 }
 
-/** Add the optional agent field without a conditional spread in the literal. */
-function withAgent(
-  input: ExecuteInput,
-  agent: ExecutionAgent | undefined,
-): ExecuteInput {
-  if (agent === undefined) {
-    return input
+/** Inputs for one nested execution input. */
+interface NestedInputOptions {
+  exec: ToolRunContext
+  schema: ToolSchema
+  callId: ToolCallId
+  rawArgs: unknown
+  controller: AbortController
+}
+
+/** Mutable view used while optional execution fields are added. */
+type MutableExecutionInput = {
+  -readonly [Key in keyof ToolExecutionInput]: ToolExecutionInput[Key]
+}
+
+/**
+ * Build one nested execution input, carrying the transport's token as the
+ * parent so scoped guards can tell program calls from model-direct calls.
+ *
+ * @param options - The running transport execution and the nested call.
+ * @returns A registry execution input.
+ */
+function nestedInput(options: NestedInputOptions): ToolExecutionInput {
+  const { exec, schema, callId, rawArgs, controller } = options
+  const input: MutableExecutionInput = {
+    callId,
+    name: schema.name,
+    schema,
+    arguments: rawArgs,
+    parent: exec.token,
+    signal: controller.signal,
   }
-  return { ...input, agent }
+  if (exec.rootCallId !== undefined) {
+    input.rootCallId = exec.rootCallId
+  }
+  if (exec.agent !== undefined) {
+    input.agent = exec.agent
+  }
+  if (exec.toolSet !== undefined) {
+    input.toolSet = exec.toolSet
+  }
+  return input
+}
+
+/**
+ * Run one nested call through the registry pipeline: prepare applies
+ * pre-execute policy and guards, dispatch runs the body, and complete finalizes
+ * the result.
+ */
+async function dispatchNested(
+  pipeline: ToolExecutionPipeline,
+  input: ToolExecutionInput,
+): Promise<ToolExecutionResult> {
+  const prepared = await pipeline.prepare(input)
+  if (prepared.kind === 'dispatch') {
+    const outcome = await pipeline.dispatch(prepared.exec)
+    return pipeline.complete(prepared.exec, outcome)
+  }
+  return pipeline.complete(prepared.exec, prepared)
 }
 
 /** Options accepted by the binding factory. */
@@ -158,6 +206,7 @@ interface BindingOptions {
   exec: ToolRunContext
   controller: AbortController
   promptState: PromptStateStore
+  pipeline: ToolExecutionPipeline
   firstProgram: boolean
 }
 
@@ -173,7 +222,8 @@ interface BindingSet {
 
 /** Build the tools namespace and its help member for one program. */
 function createToolBindings(options: BindingOptions): BindingSet {
-  const { ctx, config, exec, controller, promptState, firstProgram } = options
+  const { ctx, config, exec, controller, promptState, pipeline, firstProgram } =
+    options
   const schemas = ctx.tools.schemas(exec.agent)
   const docs = buildToolDocs(ctx, exec.agent, config.toolName)
   const docsByName = new Map<string, ToolDoc>(
@@ -211,19 +261,9 @@ function createToolBindings(options: BindingOptions): BindingSet {
     const callId = ToolCallId(
       String(exec.callId) + CALL_ID_SEPARATOR + String(dispatchCount),
     )
-    const outcome = await ctx.tools.execute(
-      withAgent(
-        {
-          callId,
-          rootCallId: exec.rootCallId,
-          name: schema.name,
-          schema,
-          arguments: rawArgs,
-          parent: exec.token,
-          signal: controller.signal,
-        },
-        exec.agent,
-      ),
+    const outcome = await dispatchNested(
+      pipeline,
+      nestedInput({ exec, schema, callId, rawArgs, controller }),
     )
     if (outcome.isError) {
       throw new TypeError(outcome.error.message)
@@ -283,12 +323,11 @@ export {
   buildToolDocs,
   createSerialGate,
   createToolBindings,
+  dispatchNested,
+  nestedInput,
   pickHelpBindingName,
   readHelpQuery,
   renderPrelude,
-  withAgent,
   type BindingOptions,
   type BindingSet,
-  type ExecuteInput,
-  type ExecutionAgent,
 }

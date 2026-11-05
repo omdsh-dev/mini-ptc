@@ -1,6 +1,6 @@
 # @oh-my-dsh/mini-ptc
 
-A minimal programmatic-tool-calling agent preset for DeepSeek Harness 0.2.1-rc.2.
+A minimal programmatic-tool-calling agent preset for DeepSeek Harness 0.2.2-rc.1.
 
 Instead of sending a generated TypeScript SDK that repeats every tool signature, mini-ptc sends one small transport tool (`run`) and a short introduction to a runtime `help()` function. The model writes a TypeScript program; `help()` reads the live tool registry through the host PTC runtime.
 
@@ -9,31 +9,31 @@ Instead of sending a generated TypeScript SDK that repeats every tool signature,
 - **One model-facing tool.** The tool catalog in the system prompt is replaced by just the `run` schema.
 - **Runtime discovery.** The program gets bare `help()`, `help("name")`, and `tools.<name>(args)`. Tool descriptions, parameters, and output schemas are formatted from the registry at call time; `run` itself is excluded because it is not a program binding.
 - **Prompt memory.** An exact `help("name")` also pins that tool's full definition into the system prompt. After every successful compaction, the five most-used tools from the just-compacted segment are added to the prompt by default.
-- **No generated SDK.** The `tools:sdk` and `tools:ptc-only` prompt sections, plus per-tool `tool:*` and `mcp:*` guidance sections, are removed for this preset's agents.
+- **No generated SDK.** The preset's executor presents only the transport schema, so `tools:sdk` and `tools:ptc-only` never appear; the waterfall also removes per-tool `tool:*` and `mcp:*` guidance sections.
 - **One callable surface.** A scoped guard denies direct model calls to every tool except `run`. Nested calls dispatched by the program are allowed.
 
 ## Requirements
 
 - A DSH profile built from the Web/standard bundle. The preset references host packages such as `dsh-tool-fs`, `dsh-tool-web`, and `dsh-tool-bash`.
 - `ctx.ptcRuntime`. The released `dsh-ptc-runtime-node` provider is mounted by the base bundle and must expose a `typescript` `function-body` runtime.
-- DSH 0.2.1-rc.2 (`engines.dsh: >=0.2.1-rc.2 <0.3.0`) and Node 24 or newer.
+- DSH 0.2.2-rc.1 (`engines.dsh: >=0.2.2-rc.1 <0.3.0`) and Node 24 or newer.
 
 ## Install and activate
 
 ```sh
 pnpm run build
 pnpm pack --dry-run --json
-dsh plugin --profile web add /absolute/path/to/oh-my-dsh-mini-ptc-0.1.0.tgz
+dsh plugin --profile web add /absolute/path/to/oh-my-dsh-mini-ptc-0.3.0.tgz
 ```
 
 Then open **Agent presets** in the Web GUI and choose **Mini PTC** for the session, or set it as the default. The shipped default remains `standard`.
 
 ## How it works
 
-1. The preset mounts this plugin beside its tool rows. `apply` declares the scope `native`, registers the compact prompt section, narrows the assembled tool list to the transport, and registers a monotonic guard.
-2. The system-prompt waterfall drops `tools:*`, `tool:*`, and `mcp:*` sections for this scope and replaces `assembly.tools` with the single `run` schema.
+1. The preset mounts this plugin beside its tool rows. `apply` selects a scoped tool executor that presents only the transport, registers the compact prompt section, drops tool-guidance sections, and registers a monotonic guard.
+2. The executor's `describe()` is the only source of model-facing schemas, so the model sees just the `run` schema; the system-prompt waterfall drops the `tools:*`, `tool:*`, and `mcp:*` guidance sections for this scope.
 3. `run` builds a `tools` namespace from every visible tool plus a hidden `help` member. A prelude installed at the top of the program binds a bare `globalThis.help` to that member, so the model can write `await help()`.
-4. Nested calls go back through `ctx.tools.execute` with the enclosing transport token as `parent`, so pre-execute policies, approvals, guards, timeouts, and result rendering stay on the native pipeline. Calls are serialized; an aborted program drains its queue before the tool settles.
+4. Nested calls run through the registry's shared execution pipeline (`prepare`, `dispatch`, `complete`) with the enclosing transport token as `parent`, so pre-execute policies, approvals, guards, timeouts, and result rendering stay on the native pipeline. Calls are serialized; an aborted program drains its queue before the tool settles.
 5. The runtime receives `program = prelude + userCode`, the calling session's current directory and standing sandbox policy (when the host provides `workingDirectory`/`sandboxPolicy`), an abort signal, and a numeric budget. The transport reports captured logs, the completion value, and the runtime sandbox fact.
 
 ### help() behavior
@@ -78,7 +78,7 @@ Change these in the preset row's `config`. The tool schema's optional `timeoutMs
 src/
   index.ts      Loader namespace: name, inject, Config, apply
   config.ts     Schemastery schema and direct-call defaults
-  runtime.ts    Scope declarations, prompt section, waterfall, guard, tool
+  runtime.ts    Executor selection, prompt section, waterfall, guard, tool
   transport.ts  run tool, prelude, runtime lifecycle
   bindings.ts   tools namespace, hidden help member, serial dispatch
   help.ts       Help formatting, fuzzy matching, and source detection
@@ -117,6 +117,7 @@ On restricted hosts that block child-process pipes, run `vitest run --pool=threa
 - **Host packages are assumed.** The preset is not portable to a bare profile without the Web/standard tool packages.
 - **No host patch.** `run_code` is reserved by `dsh-tools`, so the transport is named `run` by default; the plugin uses only public registry and system-prompt services.
 - **Prompt memory is in-memory.** Pins and tool-count state live in the plugin process; a restart or session disposal loses them.
+- **Executor selection is scoped.** The preset installs its own executor; after the plugin fiber unloads, that scope stays unavailable until a replacement executor mounts.
 - **In-history updates depend on the route.** The prompt change is appended in history only when the prepared model route advertises `systemPromptUpdate: 'in-history'`; otherwise the head system node is rewritten.
 - **Exact pins accumulate without a cap.** Pinning many tools grows the system prompt until the session ends; only the post-compaction top five is capped.
 
