@@ -104,7 +104,9 @@ describe('mini-ptc prompt composition', () => {
       ])
       expect(renderPrompt(assembly)).not.toContain('## Tool access with help()')
 
-      const echoed = await harness.callOutside('echo', { text: 'after dispose' })
+      const echoed = await harness.callOutside('echo', {
+        text: 'after dispose',
+      })
       expect(echoed.isError).toBe(false)
     } finally {
       await harness.dispose()

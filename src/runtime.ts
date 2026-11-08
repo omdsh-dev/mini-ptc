@@ -38,8 +38,8 @@ const SERIAL_LIMIT = 1
  * Build the tool executor this preset selects.
  *
  * The executor presents only the transport schema, so the model never sees a
- * generated PTC SDK or the other tool schemas, and settles direct batches through
- * the pipeline that also carries nested program dispatch.
+ * generated PTC SDK or the other tool schemas, and settles direct batches
+ * through the pipeline that also carries nested program dispatch.
  *
  * @param pipeline - Registry pipeline owned by this plugin fiber.
  * @param toolName - The registered transport name.
@@ -58,7 +58,11 @@ function createExecutor(
       }
     },
     async execute(input: ToolBatchInput): Promise<ToolBatchResult> {
-      const settled = await executeToolBatch(input, pipeline, () => SERIAL_LIMIT)
+      const settled = await executeToolBatch(
+        input,
+        pipeline,
+        () => SERIAL_LIMIT,
+      )
       return settled
     },
   }
