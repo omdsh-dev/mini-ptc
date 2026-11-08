@@ -1,5 +1,7 @@
 /* oxlint-disable vitest/prefer-to-be-falsy -- Strict boolean matchers are required by prefer-strict-boolean-matchers. */
 
+import { readFile } from 'node:fs/promises'
+
 import { Context } from '@deepseek-ai/cordis'
 import { Loader } from '@deepseek-ai/cordis-plugin-loader'
 import { describe, expect, it } from 'vitest'
@@ -7,6 +9,19 @@ import { describe, expect, it } from 'vitest'
 import { resolveConfig } from '#src/config'
 
 describe('mini-ptc package', () => {
+  it('declares repository metadata matching release provenance', async () => {
+    expect.hasAssertions()
+    const manifest: unknown = JSON.parse(
+      await readFile(new URL('../package.json', import.meta.url), 'utf8'),
+    )
+    expect(manifest).toMatchObject({
+      repository: {
+        type: 'git',
+        url: 'https://github.com/omdsh-dev/mini-ptc',
+      },
+    })
+  })
+
   it('preserves the function-plugin namespace through Loader unwrapping', async () => {
     expect.hasAssertions()
     const plugin = await import('#src/index')
